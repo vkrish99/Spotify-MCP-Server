@@ -15,7 +15,10 @@ WORKDIR /app
 
 COPY --from=builder /build/target/spotify-mcp-server.jar app.jar
 
-RUN useradd --create-home appuser
+# logging.file.name (logs/spotify-mcp-server.log) is relative to the working
+# directory -- appuser needs write access to /app to create that directory,
+# or the file logback appender fails to start.
+RUN useradd --create-home appuser && mkdir -p /app/logs && chown -R appuser:appuser /app
 USER appuser
 
 # STDIO transport: no port to expose, no HEALTHCHECK -- the process

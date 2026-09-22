@@ -47,7 +47,9 @@ public class SpotifyAuthBootstrap implements CommandLineRunner {
             "user-modify-playback-state",
             "user-read-currently-playing",
             "playlist-read-private",
-            "playlist-read-collaborative"
+            "playlist-read-collaborative",
+            "playlist-modify-public",
+            "playlist-modify-private"
     );
 
     private final SpotifyProperties properties;

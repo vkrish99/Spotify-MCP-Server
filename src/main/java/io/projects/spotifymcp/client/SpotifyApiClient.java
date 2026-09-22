@@ -2,11 +2,14 @@ package io.projects.spotifymcp.client;
 
 import io.projects.spotifymcp.client.dto.CurrentlyPlayingResponse;
 import io.projects.spotifymcp.client.dto.DevicesResponse;
+import io.projects.spotifymcp.client.dto.PlaylistResponse;
 import io.projects.spotifymcp.client.dto.SearchResponse;
+import io.projects.spotifymcp.client.dto.UserProfile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.Map;
 
 /** Thin, non-blocking wrapper around the Spotify Web API endpoints the MCP tools need. */
@@ -108,5 +111,31 @@ public class SpotifyApiClient {
                         .build())
                 .retrieve()
                 .bodyToMono(SearchResponse.class);
+    }
+
+    public Mono<UserProfile> getCurrentUser() {
+        return webClient.get()
+                .uri("/me")
+                .retrieve()
+                .bodyToMono(UserProfile.class);
+    }
+
+    public Mono<PlaylistResponse> createPlaylist(String userId, String name, String description, boolean isPublic) {
+        return webClient.post()
+                .uri("/users/{user_id}/playlists", userId)
+                .bodyValue(Map.of(
+                        "name", name,
+                        "description", description,
+                        "public", isPublic))
+                .retrieve()
+                .bodyToMono(PlaylistResponse.class);
+    }
+
+    public Mono<Void> addTracksToPlaylist(String playlistId, List<String> trackUris) {
+        return webClient.post()
+                .uri("/playlists/{playlist_id}/tracks", playlistId)
+                .bodyValue(Map.of("uris", trackUris))
+                .retrieve()
+                .bodyToMono(Void.class);
     }
 }

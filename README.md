@@ -18,6 +18,7 @@ from a chat window -- "pause the music", "what's playing?", "switch to my phone 
 | `search_catalog(query, type)` | Search tracks/albums/artists/playlists |
 | `add_to_queue(trackUri)` | Queue a track by its Spotify URI |
 | `play_playlist(playlistName)` | Find and play a playlist by name |
+| `create_pitchfork_playlist(playlistName?)` | Scrape Pitchfork's current Best New Albums/Tracks, match them on Spotify, create a playlist from the hits (see caveat below) |
 
 ## Resources
 
@@ -45,6 +46,11 @@ content a client can fetch directly without a tool call:
   to a browser) and saves a refresh token. [`SpotifyAuthService`](src/main/java/io/projects/spotifymcp/auth/SpotifyAuthService.java)
   then silently exchanges it for short-lived access tokens on demand, caching each one until ~60s
   before it expires -- normal runs never need a browser again.
+- **Pitchfork scraper**: [`PitchforkScraperService`](src/main/java/io/projects/spotifymcp/pitchfork/PitchforkScraperService.java)
+  fetches Pitchfork's Best New Albums/Tracks listing pages with Jsoup and extracts artist/title
+  pairs by URL pattern (`/reviews/albums/...`, `/reviews/tracks/...`), which is far more stable
+  than CSS class names on a Cond&eacute;-Nast-platform site. **Caveat**: this was built without
+  being able to load pitchfork.com at all -- see the "Pitchfork scraper" note below.
 
 ## Setup
 
@@ -112,9 +118,11 @@ instead of a local jar:
 ```
 
 `SpotifyApiClientTest` and `SpotifyAuthServiceTest` stub `WebClient` at the exchange-function
-level (no live Spotify calls); `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` mock
-`SpotifyApiClient` to verify tool-level formatting and error handling. CI (`.github/workflows/ci.yml`)
-runs the full suite on every push.
+level (no live Spotify calls); `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` /
+`PitchforkToolsTest` mock their collaborators to verify tool-level formatting and error handling.
+`PitchforkScraperServiceTest` exercises the HTML-extraction logic against a hand-written fixture
+(not a live-site snapshot -- see the caveat above). CI (`.github/workflows/ci.yml`) runs the full
+suite on every push.
 
 ## Notes
 
@@ -122,3 +130,22 @@ runs the full suite on every push.
   the Web API returns 403 for free accounts, which the tools surface as a readable message.
 - `set_volume` and playback-state tools implicitly target the currently active device; use
   `transfer_playback` first to change which device that is.
+- `create_pitchfork_playlist` needs the `playlist-modify-public`/`playlist-modify-private`
+  scopes. **If you authorized before this feature was added, re-run the auth bootstrap**
+  (`./mvnw spring-boot:run -Dspring-boot.run.profiles=auth`) to get a refresh token that
+  includes them -- otherwise playlist creation will fail with a 403.
+
+### Pitchfork scraper caveat
+
+`PitchforkScraperService` was built in an environment where pitchfork.com was blocked from
+the available fetch tooling (a deliberate safety restriction), so there was no way to load the
+live page and verify its markup. The selectors target Pitchfork's URL convention
+(`/reviews/albums/<slug>/`, `/reviews/tracks/<slug>/`) rather than CSS classes, which is the
+more durable signal to key off, but the artist-name extraction (`extractArtist` in that class)
+is a string-subtraction heuristic that has only been tested against a hand-written HTML fixture,
+not the real site. If `create_pitchfork_playlist` reports "couldn't extract any picks," or the
+matched artists look wrong, open https://pitchfork.com/reviews/best/albums/ in a browser,
+inspect a review card with devtools, and adjust `PitchforkScraperService` accordingly. This is
+also, fundamentally, HTML scraping of a publisher's page rather than use of an official API --
+keep request volume to on-demand/manual use (which is how the tool is built: one fetch per
+playlist-creation call, nothing polling in the background).
