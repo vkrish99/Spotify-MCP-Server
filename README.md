@@ -19,11 +19,22 @@ from a chat window -- "pause the music", "what's playing?", "switch to my phone 
 | `add_to_queue(trackUri)` | Queue a track by its Spotify URI |
 | `play_playlist(playlistName)` | Find and play a playlist by name |
 
+## Resources
+
+Besides tools (explicit calls), playback state is also exposed as MCP *resources* -- read-only
+content a client can fetch directly without a tool call:
+
+| URI | Description |
+| --- | --- |
+| `spotify://now-playing` | Same content as `get_currently_playing`, as a subscribable resource |
+| `spotify://devices` | Same content as `get_active_devices`, as a subscribable resource |
+
 ## Architecture
 
-- **MCP protocol**: `spring-ai-starter-mcp-server` (Spring AI 2.0), JSON-RPC 2.0 over STDIO --
-  `@McpTool`-annotated methods in [`tools/`](src/main/java/io/projects/spotifymcp/tools) are
-  auto-discovered and registered at startup; no manual tool-registration boilerplate.
+- **MCP protocol**: `spring-ai-starter-mcp-server` (Spring AI 1.1), JSON-RPC 2.0 over STDIO --
+  `@McpTool`/`@McpResource`-annotated methods in [`tools/`](src/main/java/io/projects/spotifymcp/tools)
+  and [`resources/`](src/main/java/io/projects/spotifymcp/resources) are auto-discovered and
+  registered at startup; no manual tool-registration boilerplate.
 - **Non-blocking I/O**: all Spotify Web API calls go through a reactive `WebClient`
   ([`SpotifyApiClient`](src/main/java/io/projects/spotifymcp/client/SpotifyApiClient.java)).
   Tool methods `.block()` once at the boundary since MCP tool invocation is a plain synchronous
@@ -73,6 +84,27 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
+### Running with Docker
+
+```bash
+docker build -t spotify-mcp-server .
+docker run -i --env-file .env spotify-mcp-server
+```
+
+(`-i` keeps stdin open, required for STDIO transport.) To point Claude Desktop at the container
+instead of a local jar:
+
+```json
+{
+  "mcpServers": {
+    "spotify": {
+      "command": "docker",
+      "args": ["run", "-i", "--env-file", "/absolute/path/to/.env", "spotify-mcp-server"]
+    }
+  }
+}
+```
+
 ## Testing
 
 ```bash
@@ -80,8 +112,9 @@ Add to `claude_desktop_config.json`:
 ```
 
 `SpotifyApiClientTest` and `SpotifyAuthServiceTest` stub `WebClient` at the exchange-function
-level (no live Spotify calls); `PlaybackToolsTest` / `StateToolsTest` mock `SpotifyApiClient` to
-verify tool-level formatting and error handling.
+level (no live Spotify calls); `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` mock
+`SpotifyApiClient` to verify tool-level formatting and error handling. CI (`.github/workflows/ci.yml`)
+runs the full suite on every push.
 
 ## Notes
 
