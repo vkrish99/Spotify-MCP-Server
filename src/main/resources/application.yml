@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: spotify-mcp-server
+  main:
+    web-application-type: none
+    banner-mode: off
+  ai:
+    mcp:
+      server:
+        name: spotify-mcp-server
+        version: 0.1.0
+        type: SYNC
+        stdio: true
+        annotation-scanner:
+          enabled: true
+
+# STDIO transport is a single JSON-RPC stream over stdin/stdout -- anything
+# written to stdout that isn't a protocol frame corrupts the connection, so
+# console logging is disabled and everything goes to a file instead.
+logging:
+  pattern:
+    console: ""
+  file:
+    name: logs/spotify-mcp-server.log
+
+spotify:
+  client-id: ${SPOTIFY_CLIENT_ID:}
+  client-secret: ${SPOTIFY_CLIENT_SECRET:}
+  redirect-uri: ${SPOTIFY_REDIRECT_URI:http://127.0.0.1:8888/callback}
+  refresh-token: ${SPOTIFY_REFRESH_TOKEN:}
