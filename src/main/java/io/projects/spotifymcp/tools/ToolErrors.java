@@ -18,12 +18,26 @@ final class ToolErrors {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final String NO_DEVICE = "No active Spotify device found. Open Spotify on a device "
+    static final String NO_DEVICE = "No active Spotify device found. Open Spotify on a device "
             + "(or use transfer_playback), then try again.";
     private static final String PREMIUM = "This needs Spotify Premium -- Spotify only allows playback "
             + "control for Premium accounts.";
 
     private ToolErrors() {
+    }
+
+    /** True for the player error Spotify returns when no device is active. */
+    static boolean isNoActiveDevice(Throwable error) {
+        if (!(error instanceof WebClientResponseException httpError)) {
+            return false;
+        }
+        SpotifyError body = parse(httpError);
+        if ("NO_ACTIVE_DEVICE".equals(body.reason())) {
+            return true;
+        }
+        return httpError.getStatusCode().value() == 404
+                && body.message() != null
+                && body.message().toLowerCase(Locale.ROOT).contains("active device");
     }
 
     static String describe(Throwable error) {
@@ -60,8 +74,9 @@ final class ToolErrors {
             case 401 -> "Spotify authorization expired or was revoked. Re-run the auth "
                     + "bootstrap (see README) to reauthorize.";
             case 403 -> "Spotify refused this request (403)" + suffix(message) + ". Playback control "
-                    + "needs Premium, and playlist changes need the playlist-modify scopes -- if you "
-                    + "authorized before those were added, re-run the auth bootstrap.";
+                    + "needs Premium, and some tools need scopes added later (playlist changes, "
+                    + "liked songs, listening history) -- if you authorized before those were "
+                    + "added, re-run the auth bootstrap.";
             case 404 -> message != null && message.toLowerCase(Locale.ROOT).contains("active device")
                     ? NO_DEVICE
                     : "Spotify couldn't find that" + suffix(message) + ".";

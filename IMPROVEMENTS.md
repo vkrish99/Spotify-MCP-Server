@@ -121,6 +121,12 @@ the README's "Notes" section to match.
 
 ## Phase 2 — New tools (highest user value)
 
+**✅ Done (Nov 2026):** all the tools below plus the three behaviour changes; the server now
+registers 23 tools (128 tests). Notes from doing it: liking uses `PUT /me/library` with a `uris`
+query parameter (max 40), `GET /me/tracks` is still the read endpoint, and `play_playlist` looks
+through up to 200 of the user's playlists before searching the catalog. Not yet tried against
+the live API.
+
 Put new methods on `SpotifyApiClient` and new `@McpTool`s in the matching `tools/` class, each
 with a unit test in the style of `PlaybackToolsTest`. Any new scopes go in
 `SpotifyAuthBootstrap.SCOPES`, and the README must say to re-run the auth bootstrap.

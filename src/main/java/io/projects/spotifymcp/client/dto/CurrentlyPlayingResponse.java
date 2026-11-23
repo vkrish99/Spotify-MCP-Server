@@ -11,7 +11,7 @@ public record CurrentlyPlayingResponse(
         Item item
 ) {
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Item(String name, List<ArtistRef> artists, AlbumRef album, Long durationMs) {
+    public record Item(String name, String uri, List<ArtistRef> artists, AlbumRef album, Long durationMs) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

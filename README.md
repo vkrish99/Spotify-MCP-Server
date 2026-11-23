@@ -7,17 +7,41 @@ from a chat window -- "pause the music", "what's playing?", "switch to my phone 
 
 ## Tools
 
+23 tools. Anywhere a URI is expected, an `open.spotify.com` share link works too.
+
+**Playback**
+
+| Tool | Description |
+| --- | --- |
+| `play(uri)` | Play a track/episode, or an album/artist/playlist/show from the start |
+| `pause_playback` / `resume_playback` | Stop / resume. If no device is active and only one is available, resume wakes it |
+| `next_track` / `previous_track` | Skip forward / back |
+| `seek(positionSeconds)` | Jump to a position in the current track |
+| `set_shuffle(on)` / `set_repeat(mode)` | Shuffle on/off; repeat `track`, `context` or `off` |
+| `set_volume(percent)` | Set volume 0-100 |
+| `transfer_playback(deviceName)` | Move playback to another device by name |
+| `add_to_queue(trackUri)` | Queue a track or episode (validated before calling Spotify) |
+| `play_playlist(playlistName)` | Play a playlist by name: your own and followed playlists first, then the catalog |
+
+**What's playing and listening history**
+
 | Tool | Description |
 | --- | --- |
 | `get_currently_playing` | Current track, artist, album, progress, playing/paused state |
+| `get_queue` | Now playing plus the next 10 items in the queue |
 | `get_active_devices` | Connected Spotify Connect devices and which is active |
-| `pause_playback` / `resume_playback` | Stop / resume playback |
-| `next_track` / `previous_track` | Skip forward / back |
-| `set_volume(percent)` | Set volume 0-100 |
-| `transfer_playback(deviceName)` | Move playback to another device by name |
+| `get_recently_played(limit?)` | Recently played tracks, newest first |
+| `get_top_items(type, timeRange?, limit?)` | Your top `tracks` or `artists` over `short_term`, `medium_term` or `long_term` |
+
+**Library and search**
+
+| Tool | Description |
+| --- | --- |
+| `list_my_playlists` | Your own and followed playlists, with item counts and URIs |
+| `add_to_playlist(playlistName, trackUri)` | Add a track or episode to one of your playlists, found by name |
+| `like_current_track` | Save the playing track to Liked Songs |
+| `get_liked_tracks(limit?)` | Your most recently liked songs |
 | `search_catalog(query, type)` | Search tracks/albums/artists/playlists |
-| `add_to_queue(trackUri)` | Queue a track by its Spotify URI |
-| `play_playlist(playlistName)` | Find and play a playlist by name |
 | `create_pitchfork_playlist(playlistName?, tracksPerAlbum?)` | Scrape Pitchfork's current Best New Albums/Tracks, match them on Spotify, create a playlist from the hits (see caveat below) |
 
 ## Resources
@@ -138,8 +162,11 @@ instead of a local jar:
 ```
 
 `SpotifyApiClientTest`, `SpotifyAuthServiceTest` and `SpotifyAuthRetryFilterTest` stub `WebClient`
-at the exchange-function level (no live Spotify calls); `McpHomeTest` covers `.env` discovery; `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` /
-`PitchforkToolsTest` mock their collaborators to verify tool-level formatting and error handling.
+at the exchange-function level (no live Spotify calls); `McpHomeTest` covers `.env` discovery;
+`SnakeCaseMappingTest` decodes real-shaped snake_case responses with the app's own `ObjectMapper`;
+`PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` / `LibraryToolsTest` /
+`PitchforkToolsTest` mock their collaborators to verify tool-level formatting and error handling,
+and `SpotifyUrisTest` covers URI and share-link parsing.
 `PitchforkScraperServiceTest` exercises the HTML-extraction logic against a hand-written fixture
 (not a live-site snapshot -- see the caveat above). CI (`.github/workflows/ci.yml`) runs the full
 suite on every push.
@@ -154,10 +181,15 @@ suite on every push.
   created with `POST /me/playlists` and filled with `POST /playlists/{id}/items` (the older
   `/users/{id}/playlists` and `/playlists/{id}/tracks` endpoints were removed), and search returns
   at most 10 results. See Spotify's [migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
-- `create_pitchfork_playlist` needs the `playlist-modify-public`/`playlist-modify-private`
-  scopes. **If you authorized before this feature was added, re-run the auth bootstrap**
-  (`./mvnw spring-boot:run -Dspring-boot.run.profiles=auth`) to get a refresh token that
-  includes them -- otherwise playlist creation will fail with a 403.
+- Liking tracks uses `PUT /me/library?uris=...`, which replaced `PUT /me/tracks` in the same
+  changes.
+- **Scopes added over time -- re-run the auth bootstrap if you authorized earlier**
+  (`./mvnw spring-boot:run -Dspring-boot.run.profiles=auth`). Otherwise the tools that need them
+  fail with a 403:
+  - `playlist-modify-public` / `playlist-modify-private`: `create_pitchfork_playlist`, `add_to_playlist`
+  - `user-library-read` / `user-library-modify`: `get_liked_tracks`, `like_current_track`
+  - `user-read-recently-played`: `get_recently_played`
+  - `user-top-read`: `get_top_items`
 
 ### Pitchfork scraper caveat
 

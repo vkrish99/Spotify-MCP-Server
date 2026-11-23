@@ -46,7 +46,13 @@ public class SpotifyAuthBootstrap implements CommandLineRunner {
             "playlist-read-private",
             "playlist-read-collaborative",
             "playlist-modify-public",
-            "playlist-modify-private"
+            "playlist-modify-private",
+            // Added for the library and listening-history tools. Users who authorized
+            // before these existed must re-run the auth bootstrap.
+            "user-library-read",
+            "user-library-modify",
+            "user-read-recently-played",
+            "user-top-read"
     );
 
     private final SpotifyProperties properties;
