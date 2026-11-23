@@ -17,11 +17,13 @@ spring:
 # STDIO transport is a single JSON-RPC stream over stdin/stdout -- anything
 # written to stdout that isn't a protocol frame corrupts the connection, so
 # console logging is disabled and everything goes to a file instead.
+# spotify-mcp.home is set by DotenvPropertySourceLoader (see McpHome) so the log
+# location doesn't depend on which directory the MCP client launches us from.
 logging:
   pattern:
     console: ""
   file:
-    name: logs/spotify-mcp-server.log
+    name: ${spotify-mcp.home}/logs/spotify-mcp-server.log
 
 spotify:
   client-id: ${SPOTIFY_CLIENT_ID:}

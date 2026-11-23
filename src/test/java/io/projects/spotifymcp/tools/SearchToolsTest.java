@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -63,7 +64,7 @@ class SearchToolsTest {
         SearchResponse response = new SearchResponse(null, null, null,
                 new SearchResponse.PlaylistsPage(List.of(
                         new SearchResponse.PlaylistRef("p1", "Coding Focus", "spotify:playlist:p1", null))));
-        when(client.search("coding music", "playlist", 1)).thenReturn(Mono.just(response));
+        when(client.search("coding music", "playlist", 5)).thenReturn(Mono.just(response));
         when(client.playContext("spotify:playlist:p1")).thenReturn(Mono.empty());
 
         String result = tools.playPlaylist("coding music");
@@ -73,10 +74,34 @@ class SearchToolsTest {
     }
 
     @Test
+    void playPlaylistSkipsNullSearchEntries() {
+        // Spotify's playlist search really does return null entries in `items`.
+        List<SearchResponse.PlaylistRef> items = new ArrayList<>();
+        items.add(null);
+        items.add(new SearchResponse.PlaylistRef("p2", "Deep Work", "spotify:playlist:p2", null));
+        SearchResponse response = new SearchResponse(null, null, null, new SearchResponse.PlaylistsPage(items));
+        when(client.search("deep work", "playlist", 5)).thenReturn(Mono.just(response));
+        when(client.playContext("spotify:playlist:p2")).thenReturn(Mono.empty());
+
+        assertThat(tools.playPlaylist("deep work")).isEqualTo("Now playing playlist 'Deep Work'.");
+    }
+
+    @Test
+    void searchResultsSkipNullEntries() {
+        List<SearchResponse.PlaylistRef> items = new ArrayList<>();
+        items.add(null);
+        items.add(new SearchResponse.PlaylistRef("p1", "Lo-fi", "spotify:playlist:p1", null));
+        when(client.search(anyString(), anyString(), anyInt())).thenReturn(Mono.just(
+                new SearchResponse(null, null, null, new SearchResponse.PlaylistsPage(items))));
+
+        assertThat(tools.searchCatalog("lofi", "playlist")).isEqualTo("Lo-fi -- spotify:playlist:p1");
+    }
+
+    @Test
     void playPlaylistReportsWhenNothingFound() {
         SearchResponse response = new SearchResponse(null, null, null,
                 new SearchResponse.PlaylistsPage(List.of()));
-        when(client.search("nonexistent", "playlist", 1)).thenReturn(Mono.just(response));
+        when(client.search("nonexistent", "playlist", 5)).thenReturn(Mono.just(response));
 
         String result = tools.playPlaylist("nonexistent");
 

@@ -15,9 +15,11 @@ WORKDIR /app
 
 COPY --from=builder /build/target/spotify-mcp-server.jar app.jar
 
-# logging.file.name (logs/spotify-mcp-server.log) is relative to the working
-# directory -- appuser needs write access to /app to create that directory,
-# or the file logback appender fails to start.
+# Logs go to $SPOTIFY_MCP_HOME/logs (see McpHome). Credentials come from
+# `docker run --env-file`, so there is no .env inside the image. appuser needs
+# write access to /app to create the logs directory, or the file logback
+# appender fails to start.
+ENV SPOTIFY_MCP_HOME=/app
 RUN useradd --create-home appuser && mkdir -p /app/logs && chown -R appuser:appuser /app
 USER appuser
 

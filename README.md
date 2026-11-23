@@ -18,7 +18,7 @@ from a chat window -- "pause the music", "what's playing?", "switch to my phone 
 | `search_catalog(query, type)` | Search tracks/albums/artists/playlists |
 | `add_to_queue(trackUri)` | Queue a track by its Spotify URI |
 | `play_playlist(playlistName)` | Find and play a playlist by name |
-| `create_pitchfork_playlist(playlistName?)` | Scrape Pitchfork's current Best New Albums/Tracks, match them on Spotify, create a playlist from the hits (see caveat below) |
+| `create_pitchfork_playlist(playlistName?, tracksPerAlbum?)` | Scrape Pitchfork's current Best New Albums/Tracks, match them on Spotify, create a playlist from the hits (see caveat below) |
 
 ## Resources
 
@@ -45,7 +45,12 @@ content a client can fetch directly without a tool call:
   runs the Authorization Code + PKCE flow once (local callback server, no client secret exposed
   to a browser) and saves a refresh token. [`SpotifyAuthService`](src/main/java/io/projects/spotifymcp/auth/SpotifyAuthService.java)
   then silently exchanges it for short-lived access tokens on demand, caching each one until ~60s
-  before it expires -- normal runs never need a browser again.
+  before it expires -- normal runs never need a browser again. Concurrent tool calls share a single
+  in-flight refresh, and if Spotify rotates the refresh token, the new one is saved back to `.env`.
+- **Retries that fit MCP's synchronous calls**: [`SpotifyAuthRetryFilter`](src/main/java/io/projects/spotifymcp/config/SpotifyAuthRetryFilter.java)
+  retries a 401 once with a fresh token, waits out a short `Retry-After` on 429, and retries 5xx
+  only for GETs (a repeated `POST /queue` would queue twice). Errors reach the LLM as readable text
+  based on Spotify's own `reason` field (`NO_ACTIVE_DEVICE`, `PREMIUM_REQUIRED`, ...).
 - **Pitchfork scraper**: [`PitchforkScraperService`](src/main/java/io/projects/spotifymcp/pitchfork/PitchforkScraperService.java)
   fetches Pitchfork's Best New Albums/Tracks listing pages with Jsoup and extracts artist/title
   pairs by URL pattern (`/reviews/albums/...`, `/reviews/tracks/...`), which is far more stable
@@ -55,7 +60,9 @@ content a client can fetch directly without a tool call:
 ## Setup
 
 1. **Register a Spotify app**: [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) →
-   Create app → add `http://127.0.0.1:8888/callback` as a Redirect URI.
+   Create app → add `http://127.0.0.1:8888/callback` as a Redirect URI. Since Spotify's
+   February 2026 changes, Development Mode apps need the **app owner to have Premium**, and only
+   accounts added under the app's *User Management* (up to 5) can authorize it.
 2. **Configure credentials**:
    ```bash
    cp .env.example .env
@@ -77,7 +84,16 @@ content a client can fetch directly without a tool call:
 
 ### Claude Desktop config
 
-Add to `claude_desktop_config.json`:
+MCP clients launch the server from their own working directory, not this project, so the server
+looks for `.env` (and writes `logs/`) in the first of these that applies:
+
+1. `$SPOTIFY_MCP_HOME`, if set
+2. the working directory, if it has a `.env`
+3. the jar's directory or its parent -- so `java -jar /path/to/project/target/spotify-mcp-server.jar`
+   finds `/path/to/project/.env` from anywhere
+4. `~/.spotify-mcp/`
+
+With the jar still in `target/`, no extra setup is needed. Add to `claude_desktop_config.json`:
 
 ```json
 {
@@ -89,6 +105,10 @@ Add to `claude_desktop_config.json`:
   }
 }
 ```
+
+To run a jar that lives somewhere else, point it at the folder holding `.env` with
+`"env": { "SPOTIFY_MCP_HOME": "/absolute/path/to/project" }` in the same config block. For Claude
+Code: `claude mcp add spotify -- java -jar /absolute/path/to/spotify-mcp-server.jar`.
 
 ### Running with Docker
 
@@ -117,8 +137,8 @@ instead of a local jar:
 ./mvnw test
 ```
 
-`SpotifyApiClientTest` and `SpotifyAuthServiceTest` stub `WebClient` at the exchange-function
-level (no live Spotify calls); `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` /
+`SpotifyApiClientTest`, `SpotifyAuthServiceTest` and `SpotifyAuthRetryFilterTest` stub `WebClient`
+at the exchange-function level (no live Spotify calls); `McpHomeTest` covers `.env` discovery; `PlaybackToolsTest` / `SearchToolsTest` / `StateToolsTest` /
 `PitchforkToolsTest` mock their collaborators to verify tool-level formatting and error handling.
 `PitchforkScraperServiceTest` exercises the HTML-extraction logic against a hand-written fixture
 (not a live-site snapshot -- see the caveat above). CI (`.github/workflows/ci.yml`) runs the full
@@ -130,6 +150,10 @@ suite on every push.
   the Web API returns 403 for free accounts, which the tools surface as a readable message.
 - `set_volume` and playback-state tools implicitly target the currently active device; use
   `transfer_playback` first to change which device that is.
+- This targets Spotify's post-February-2026 Web API for Development Mode apps: playlists are
+  created with `POST /me/playlists` and filled with `POST /playlists/{id}/items` (the older
+  `/users/{id}/playlists` and `/playlists/{id}/tracks` endpoints were removed), and search returns
+  at most 10 results. See Spotify's [migration guide](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide).
 - `create_pitchfork_playlist` needs the `playlist-modify-public`/`playlist-modify-private`
   scopes. **If you authorized before this feature was added, re-run the auth bootstrap**
   (`./mvnw spring-boot:run -Dspring-boot.run.profiles=auth`) to get a refresh token that

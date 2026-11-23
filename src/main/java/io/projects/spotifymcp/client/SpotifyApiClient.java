@@ -1,20 +1,24 @@
 package io.projects.spotifymcp.client;
 
+import io.projects.spotifymcp.client.dto.AlbumTracksResponse;
 import io.projects.spotifymcp.client.dto.CurrentlyPlayingResponse;
 import io.projects.spotifymcp.client.dto.DevicesResponse;
 import io.projects.spotifymcp.client.dto.PlaylistResponse;
 import io.projects.spotifymcp.client.dto.SearchResponse;
-import io.projects.spotifymcp.client.dto.UserProfile;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /** Thin, non-blocking wrapper around the Spotify Web API endpoints the MCP tools need. */
 @Component
 public class SpotifyApiClient {
+
+    private static final int MAX_ITEMS_PER_REQUEST = 100;
 
     private final WebClient webClient;
 
@@ -63,7 +67,7 @@ public class SpotifyApiClient {
     public Mono<Void> transferPlayback(String deviceId) {
         return webClient.put()
                 .uri("/me/player")
-                .bodyValue(Map.of("device_ids", java.util.List.of(deviceId), "play", true))
+                .bodyValue(Map.of("device_ids", List.of(deviceId), "play", true))
                 .retrieve()
                 .bodyToMono(Void.class);
     }
@@ -113,16 +117,20 @@ public class SpotifyApiClient {
                 .bodyToMono(SearchResponse.class);
     }
 
-    public Mono<UserProfile> getCurrentUser() {
+    public Mono<AlbumTracksResponse> getAlbumTracks(String albumId, int limit) {
         return webClient.get()
-                .uri("/me")
+                .uri(uriBuilder -> uriBuilder
+                        .path("/albums/{id}/tracks")
+                        .queryParam("limit", limit)
+                        .build(albumId))
                 .retrieve()
-                .bodyToMono(UserProfile.class);
+                .bodyToMono(AlbumTracksResponse.class);
     }
 
-    public Mono<PlaylistResponse> createPlaylist(String userId, String name, String description, boolean isPublic) {
+    /** Creates a playlist owned by the authorized user (POST /me/playlists, Feb 2026 API). */
+    public Mono<PlaylistResponse> createPlaylist(String name, String description, boolean isPublic) {
         return webClient.post()
-                .uri("/users/{user_id}/playlists", userId)
+                .uri("/me/playlists")
                 .bodyValue(Map.of(
                         "name", name,
                         "description", description,
@@ -131,11 +139,22 @@ public class SpotifyApiClient {
                 .bodyToMono(PlaylistResponse.class);
     }
 
-    public Mono<Void> addTracksToPlaylist(String playlistId, List<String> trackUris) {
-        return webClient.post()
-                .uri("/playlists/{playlist_id}/tracks", playlistId)
-                .bodyValue(Map.of("uris", trackUris))
-                .retrieve()
-                .bodyToMono(Void.class);
+    /**
+     * Appends items to a playlist (POST /playlists/{id}/items, which replaced /tracks in the
+     * Feb 2026 API). Spotify accepts at most 100 URIs per request, so larger lists are sent in
+     * order-preserving batches.
+     */
+    public Mono<Void> addItemsToPlaylist(String playlistId, List<String> uris) {
+        List<List<String>> batches = new ArrayList<>();
+        for (int start = 0; start < uris.size(); start += MAX_ITEMS_PER_REQUEST) {
+            batches.add(uris.subList(start, Math.min(start + MAX_ITEMS_PER_REQUEST, uris.size())));
+        }
+        return Flux.fromIterable(batches)
+                .concatMap(batch -> webClient.post()
+                        .uri("/playlists/{playlist_id}/items", playlistId)
+                        .bodyValue(Map.of("uris", batch))
+                        .retrieve()
+                        .bodyToMono(Void.class))
+                .then();
     }
 }
