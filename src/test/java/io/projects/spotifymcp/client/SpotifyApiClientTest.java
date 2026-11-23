@@ -11,7 +11,10 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -91,6 +94,50 @@ class SpotifyApiClientTest {
         StepVerifier.create(client.pause())
                 .expectError()
                 .verify();
+    }
+
+    @Test
+    void createPlaylistUsesMePlaylistsEndpoint() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        SpotifyApiClient client = clientCapturing(captured,
+                jsonResponse(HttpStatus.CREATED, "{\"id\":\"p1\",\"name\":\"Mix\",\"uri\":\"spotify:playlist:p1\"}"));
+
+        StepVerifier.create(client.createPlaylist("Mix", "desc", false))
+                .assertNext(playlist -> assertThat(playlist.id()).isEqualTo("p1"))
+                .verifyComplete();
+
+        // POST /users/{id}/playlists was removed in Spotify's Feb 2026 API changes.
+        assertThat(captured.get().method()).isEqualTo(HttpMethod.POST);
+        assertThat(captured.get().url().getPath()).isEqualTo("/me/playlists");
+    }
+
+    @Test
+    void addItemsUsesItemsEndpointAndBatchesByHundred() {
+        List<ClientRequest> requests = new ArrayList<>();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            requests.add(request);
+            return noContent();
+        }).build();
+        List<String> uris = IntStream.range(0, 150).mapToObj(i -> "spotify:track:" + i).toList();
+
+        new SpotifyApiClient(webClient).addItemsToPlaylist("p1", uris).block();
+
+        // /playlists/{id}/tracks was renamed to /items in Spotify's Feb 2026 API changes.
+        assertThat(requests).hasSize(2);
+        assertThat(requests).allSatisfy(r -> assertThat(r.url().getPath()).isEqualTo("/playlists/p1/items"));
+    }
+
+    @Test
+    void getAlbumTracksDeserializesTrackUris() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        SpotifyApiClient client = clientCapturing(captured, jsonResponse(HttpStatus.OK,
+                "{\"items\":[{\"id\":\"t1\",\"name\":\"One\",\"uri\":\"spotify:track:t1\"}]}"));
+
+        StepVerifier.create(client.getAlbumTracks("a1", 2))
+                .assertNext(response -> assertThat(response.items().get(0).uri()).isEqualTo("spotify:track:t1"))
+                .verifyComplete();
+
+        assertThat(captured.get().url().toString()).contains("/albums/a1/tracks").contains("limit=2");
     }
 
     private SpotifyApiClient clientCapturing(AtomicReference<ClientRequest> captured,

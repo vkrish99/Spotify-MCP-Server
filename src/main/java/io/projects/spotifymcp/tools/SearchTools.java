@@ -10,7 +10,9 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 
 @Component
 public class SearchTools {
@@ -56,11 +58,12 @@ public class SearchTools {
             description = "Search for a playlist by name and start playing it on the current active device.")
     public String playPlaylist(
             @McpToolParam(description = "Playlist name, or a close match", required = true) String playlistName) {
-        return client.search(playlistName, "playlist", 1)
+        // Ask for a few results: Spotify's playlist search can return null entries in `items`.
+        return client.search(playlistName, "playlist", 5)
                 .flatMap(response -> {
-                    List<SearchResponse.PlaylistRef> items = response.playlists() == null
-                            ? List.of() : response.playlists().items();
-                    if (items == null || items.isEmpty()) {
+                    List<SearchResponse.PlaylistRef> items = nonNull(
+                            response.playlists() == null ? null : response.playlists().items());
+                    if (items.isEmpty()) {
                         return Mono.just("No playlist found matching '" + playlistName + "'.");
                     }
                     SearchResponse.PlaylistRef playlist = items.get(0);
@@ -89,17 +92,18 @@ public class SearchTools {
         return String.join("\n", lines);
     }
 
-    private <T> List<String> mapItems(List<T> items, java.util.function.Function<T, String> formatter) {
-        if (items == null) {
-            return List.of();
-        }
-        return items.stream().map(formatter).toList();
+    private <T> List<String> mapItems(List<T> items, Function<T, String> formatter) {
+        return nonNull(items).stream().map(formatter).toList();
+    }
+
+    private static <T> List<T> nonNull(List<T> items) {
+        return items == null ? List.of() : items.stream().filter(Objects::nonNull).toList();
     }
 
     private String joinArtists(List<SearchResponse.ArtistRef> artists) {
         if (artists == null || artists.isEmpty()) {
             return "Unknown Artist";
         }
-        return artists.stream().map(SearchResponse.ArtistRef::name).reduce((a, b) -> a + ", " + b).orElse("Unknown Artist");
+        return artists.stream().filter(Objects::nonNull).map(SearchResponse.ArtistRef::name).reduce((a, b) -> a + ", " + b).orElse("Unknown Artist");
     }
 }

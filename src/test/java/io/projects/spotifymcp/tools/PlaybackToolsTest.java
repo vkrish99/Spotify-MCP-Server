@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -82,8 +83,12 @@ class PlaybackToolsTest {
 
     @Test
     void surfacesNoActiveDeviceAsReadableMessage() {
+        // Real body Spotify sends from player endpoints when no device is active.
+        byte[] body = """
+                {"error":{"status":404,"message":"Player command failed: No active device found","reason":"NO_ACTIVE_DEVICE"}}
+                """.getBytes(StandardCharsets.UTF_8);
         WebClientResponseException notFound = WebClientResponseException.create(
-                404, "Not Found", null, null, null);
+                404, "Not Found", null, body, StandardCharsets.UTF_8);
         when(client.pause()).thenReturn(Mono.error(notFound));
 
         String result = tools.pausePlayback();

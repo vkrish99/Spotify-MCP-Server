@@ -18,12 +18,9 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -54,10 +51,13 @@ public class SpotifyAuthBootstrap implements CommandLineRunner {
 
     private final SpotifyProperties properties;
     private final WebClient.Builder webClientBuilder;
+    private final RefreshTokenStore refreshTokenStore;
 
-    public SpotifyAuthBootstrap(SpotifyProperties properties, WebClient.Builder webClientBuilder) {
+    public SpotifyAuthBootstrap(SpotifyProperties properties, WebClient.Builder webClientBuilder,
+                                RefreshTokenStore refreshTokenStore) {
         this.properties = properties;
         this.webClientBuilder = webClientBuilder;
+        this.refreshTokenStore = refreshTokenStore;
     }
 
     @Override
@@ -168,23 +168,8 @@ public class SpotifyAuthBootstrap implements CommandLineRunner {
     }
 
     private void writeRefreshTokenToEnvFile(String refreshToken) {
-        Path envFile = Path.of(".env");
         try {
-            List<String> lines = Files.exists(envFile)
-                    ? new ArrayList<>(Files.readAllLines(envFile))
-                    : new ArrayList<>();
-            boolean replaced = false;
-            for (int i = 0; i < lines.size(); i++) {
-                if (lines.get(i).startsWith("SPOTIFY_REFRESH_TOKEN=")) {
-                    lines.set(i, "SPOTIFY_REFRESH_TOKEN=" + refreshToken);
-                    replaced = true;
-                    break;
-                }
-            }
-            if (!replaced) {
-                lines.add("SPOTIFY_REFRESH_TOKEN=" + refreshToken);
-            }
-            Files.write(envFile, lines);
+            Path envFile = refreshTokenStore.save(refreshToken);
             System.out.println("Saved SPOTIFY_REFRESH_TOKEN to " + envFile.toAbsolutePath());
         } catch (IOException e) {
             System.out.println("Could not write .env automatically (" + e.getMessage()
