@@ -3,8 +3,14 @@ package io.projects.spotifymcp.client;
 import io.projects.spotifymcp.client.dto.AlbumTracksResponse;
 import io.projects.spotifymcp.client.dto.CurrentlyPlayingResponse;
 import io.projects.spotifymcp.client.dto.DevicesResponse;
+import io.projects.spotifymcp.client.dto.MyPlaylistsResponse;
 import io.projects.spotifymcp.client.dto.PlaylistResponse;
+import io.projects.spotifymcp.client.dto.QueueResponse;
+import io.projects.spotifymcp.client.dto.RecentlyPlayedResponse;
+import io.projects.spotifymcp.client.dto.SavedTracksResponse;
 import io.projects.spotifymcp.client.dto.SearchResponse;
+import io.projects.spotifymcp.client.dto.TopArtistsResponse;
+import io.projects.spotifymcp.client.dto.TopTracksResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
@@ -76,6 +82,124 @@ public class SpotifyApiClient {
         return webClient.put()
                 .uri("/me/player/play")
                 .bodyValue(Map.of("context_uri", contextUri))
+                .retrieve()
+                .bodyToMono(Void.class);
+    }
+
+    /** Plays specific tracks/episodes (PUT /me/player/play with {@code uris}). */
+    public Mono<Void> playUris(List<String> uris) {
+        return webClient.put()
+                .uri("/me/player/play")
+                .bodyValue(Map.of("uris", uris))
+                .retrieve()
+                .bodyToMono(Void.class);
+    }
+
+    public Mono<Void> seek(long positionMs) {
+        return webClient.put()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/player/seek")
+                        .queryParam("position_ms", positionMs)
+                        .build())
+                .retrieve()
+                .bodyToMono(Void.class);
+    }
+
+    public Mono<Void> setShuffle(boolean on) {
+        return webClient.put()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/player/shuffle")
+                        .queryParam("state", on)
+                        .build())
+                .retrieve()
+                .bodyToMono(Void.class);
+    }
+
+    /** {@code mode} is one of track, context, off. */
+    public Mono<Void> setRepeat(String mode) {
+        return webClient.put()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/player/repeat")
+                        .queryParam("state", mode)
+                        .build())
+                .retrieve()
+                .bodyToMono(Void.class);
+    }
+
+    public Mono<QueueResponse> getQueue() {
+        return webClient.get()
+                .uri("/me/player/queue")
+                .retrieve()
+                .bodyToMono(QueueResponse.class);
+    }
+
+    public Mono<RecentlyPlayedResponse> getRecentlyPlayed(int limit) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/player/recently-played")
+                        .queryParam("limit", limit)
+                        .build())
+                .retrieve()
+                .bodyToMono(RecentlyPlayedResponse.class);
+    }
+
+    /** {@code timeRange} is one of short_term, medium_term, long_term. */
+    public Mono<TopTracksResponse> getTopTracks(String timeRange, int limit) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/top/tracks")
+                        .queryParam("time_range", timeRange)
+                        .queryParam("limit", limit)
+                        .build())
+                .retrieve()
+                .bodyToMono(TopTracksResponse.class);
+    }
+
+    /** {@code timeRange} is one of short_term, medium_term, long_term. */
+    public Mono<TopArtistsResponse> getTopArtists(String timeRange, int limit) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/top/artists")
+                        .queryParam("time_range", timeRange)
+                        .queryParam("limit", limit)
+                        .build())
+                .retrieve()
+                .bodyToMono(TopArtistsResponse.class);
+    }
+
+    /** One page (max 50) of the playlists the user owns or follows. */
+    public Mono<MyPlaylistsResponse> getMyPlaylists(int limit, int offset) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/playlists")
+                        .queryParam("limit", limit)
+                        .queryParam("offset", offset)
+                        .build())
+                .retrieve()
+                .bodyToMono(MyPlaylistsResponse.class);
+    }
+
+    /** The user's Liked Songs, most recent first. */
+    public Mono<SavedTracksResponse> getSavedTracks(int limit) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/tracks")
+                        .queryParam("limit", limit)
+                        .build())
+                .retrieve()
+                .bodyToMono(SavedTracksResponse.class);
+    }
+
+    /**
+     * Saves items to the user's library (PUT /me/library?uris=..., which replaced PUT /me/tracks
+     * in the Feb 2026 API). A saved track is a "liked" song. Spotify accepts up to 40 URIs.
+     */
+    public Mono<Void> saveToLibrary(List<String> uris) {
+        return webClient.put()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/me/library")
+                        .queryParam("uris", String.join(",", uris))
+                        .build())
                 .retrieve()
                 .bodyToMono(Void.class);
     }

@@ -140,6 +140,81 @@ class SpotifyApiClientTest {
         assertThat(captured.get().url().toString()).contains("/albums/a1/tracks").contains("limit=2");
     }
 
+    @Test
+    void saveToLibraryUsesMeLibraryWithCommaSeparatedUris() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        SpotifyApiClient client = clientCapturing(captured, noContent());
+
+        client.saveToLibrary(List.of("spotify:track:a", "spotify:track:b")).block();
+
+        // PUT /me/tracks was replaced by PUT /me/library?uris=... in Spotify's Feb 2026 API changes.
+        assertThat(captured.get().method()).isEqualTo(HttpMethod.PUT);
+        assertThat(captured.get().url().getPath()).isEqualTo("/me/library");
+        assertThat(captured.get().url().getQuery()).isEqualTo("uris=spotify:track:a,spotify:track:b");
+    }
+
+    @Test
+    void playerControlsSendTheirQueryParams() {
+        List<ClientRequest> requests = new ArrayList<>();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            requests.add(request);
+            return noContent();
+        }).build();
+        SpotifyApiClient client = new SpotifyApiClient(webClient);
+
+        client.seek(95_000).block();
+        client.setShuffle(true).block();
+        client.setRepeat("track").block();
+
+        assertThat(requests).extracting(r -> r.method() + " " + r.url().getPath() + "?" + r.url().getQuery())
+                .containsExactly(
+                        "PUT /me/player/seek?position_ms=95000",
+                        "PUT /me/player/shuffle?state=true",
+                        "PUT /me/player/repeat?state=track");
+    }
+
+    @Test
+    void libraryAndHistoryReadsUseTheirEndpoints() {
+        List<ClientRequest> requests = new ArrayList<>();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            requests.add(request);
+            return jsonResponse(HttpStatus.OK, "{\"items\":[]}");
+        }).build();
+        SpotifyApiClient client = new SpotifyApiClient(webClient);
+
+        client.getMyPlaylists(50, 100).block();
+        client.getSavedTracks(10).block();
+        client.getRecentlyPlayed(20).block();
+        client.getTopTracks("short_term", 5).block();
+        client.getTopArtists("long_term", 5).block();
+        client.getQueue().block();
+
+        assertThat(requests).extracting(r -> r.method() + " " + r.url().getPath() + "?" + r.url().getQuery())
+                .containsExactly(
+                        "GET /me/playlists?limit=50&offset=100",
+                        "GET /me/tracks?limit=10",
+                        "GET /me/player/recently-played?limit=20",
+                        "GET /me/top/tracks?time_range=short_term&limit=5",
+                        "GET /me/top/artists?time_range=long_term&limit=5",
+                        "GET /me/player/queue?null");
+    }
+
+    @Test
+    void getQueueDeserializesCurrentlyPlayingAndQueue() {
+        String body = """
+                {"currentlyPlaying":{"name":"Hey Ya!","uri":"spotify:track:t1","artists":[{"name":"Outkast"}]},
+                 "queue":[{"name":"Episode 1","uri":"spotify:episode:e1","show":{"name":"A Pod"}}]}
+                """;
+        SpotifyApiClient client = clientReturning(jsonResponse(HttpStatus.OK, body));
+
+        StepVerifier.create(client.getQueue())
+                .assertNext(queue -> {
+                    assertThat(queue.currentlyPlaying().describe()).isEqualTo("Hey Ya! by Outkast");
+                    assertThat(queue.queue().get(0).describe()).isEqualTo("Episode 1 (A Pod)");
+                })
+                .verifyComplete();
+    }
+
     private SpotifyApiClient clientCapturing(AtomicReference<ClientRequest> captured,
                                               Mono<ClientResponse> response) {
         WebClient webClient = WebClient.builder().exchangeFunction(request -> {
